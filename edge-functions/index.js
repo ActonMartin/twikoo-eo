@@ -293,7 +293,7 @@ async function sha256(message) {
 // ==================== UA 解析 ====================
 
 /**
- * 简单的 UA 解析器
+ * UA 解析器 - 参考 twikoo-func 的 bowser 解析逻辑
  * @param {String} ua User-Agent 字符串
  * @returns {{ os: String, browser: String }}
  */
@@ -304,64 +304,90 @@ function parseUA(ua) {
   let browser = ''
   
   // 解析操作系统
-  if (/Windows NT 10/.test(ua)) {
-    os = 'Windows 10'
-  } else if (/Windows NT 11/.test(ua) || /Windows NT 10.*Win64.*x64/.test(ua) && /Chrome\/(\d+)/.test(ua) && parseInt(RegExp.$1) >= 90) {
-    // Windows 11 的 UA 和 Windows 10 类似，但通常配合较新的 Chrome
-    os = 'Windows 10'
-  } else if (/Windows NT 6\.3/.test(ua)) {
-    os = 'Windows 8.1'
-  } else if (/Windows NT 6\.2/.test(ua)) {
-    os = 'Windows 8'
-  } else if (/Windows NT 6\.1/.test(ua)) {
-    os = 'Windows 7'
-  } else if (/Windows/.test(ua)) {
-    os = 'Windows'
-  } else if (/Mac OS X (\d+)[_.](\d+)/.test(ua)) {
-    const major = RegExp.$1
-    const versionNames = {
-      '10': 'macOS',
-      '11': 'macOS Big Sur',
-      '12': 'macOS Monterey', 
-      '13': 'macOS Ventura',
-      '14': 'macOS Sonoma',
-      '15': 'macOS Sequoia',
-      '26': 'macOS' // 虚拟版本号
+  if (/Windows/.test(ua)) {
+    let version = ''
+    if (/Windows NT 10/.test(ua)) {
+      // Windows 10 或 11（无法区分）
+      version = '10'
+    } else if (/Windows NT 6\.3/.test(ua)) {
+      version = '8.1'
+    } else if (/Windows NT 6\.2/.test(ua)) {
+      version = '8'
+    } else if (/Windows NT 6\.1/.test(ua)) {
+      version = '7'
+    } else if (/Windows NT 6\.0/.test(ua)) {
+      version = 'Vista'
+    } else if (/Windows NT 5\.1/.test(ua)) {
+      version = 'XP'
     }
-    os = versionNames[major] || `macOS ${major}`
-  } else if (/iPhone OS (\d+)/.test(ua)) {
-    os = `iOS ${RegExp.$1}`
-  } else if (/iPad.*OS (\d+)/.test(ua)) {
-    os = `iPadOS ${RegExp.$1}`
-  } else if (/Android (\d+(\.\d+)?)/.test(ua)) {
-    os = `Android ${RegExp.$1}`
-  } else if (/Linux/.test(ua)) {
-    os = 'Linux'
+    os = version ? `Windows ${version}` : 'Windows'
+  } else if (/Mac OS X/.test(ua)) {
+    // macOS 版本解析
+    const match = ua.match(/Mac OS X[_ ](\d+)[_.](\d+)/)
+    if (match) {
+      const major = match[1]
+      const minor = match[2]
+      const versionNames = {
+        '10': 'macOS',
+        '11': 'Big Sur',
+        '12': 'Monterey',
+        '13': 'Ventura',
+        '14': 'Sonoma',
+        '15': 'Sequoia',
+        '16': 'Tahoe'
+      }
+      const versionName = versionNames[major]
+      if (versionName) {
+        os = major === '10' ? `macOS ${major}.${minor}` : `macOS ${versionName}`
+      } else {
+        os = `macOS ${major}.${minor}`
+      }
+    } else {
+      os = 'macOS'
+    }
+  } else if (/iPhone|iPad|iPod/.test(ua)) {
+    const match = ua.match(/OS (\d+)[_.](\d+)/)
+    if (match) {
+      os = `iOS ${match[1]}.${match[2]}`
+    } else {
+      os = 'iOS'
+    }
+  } else if (/Android/.test(ua)) {
+    const match = ua.match(/Android (\d+(\.\d+)?)/)
+    os = match ? `Android ${match[1]}` : 'Android'
+  } else if (/HarmonyOS/i.test(ua)) {
+    const match = ua.match(/HarmonyOS[\/\s]?(\d+(\.\d+)*)?/i)
+    os = match && match[1] ? `HarmonyOS ${match[1]}` : 'HarmonyOS'
   } else if (/CrOS/.test(ua)) {
     os = 'Chrome OS'
-  } else if (/HarmonyOS/i.test(ua)) {
-    os = 'HarmonyOS'
+  } else if (/Linux/.test(ua)) {
+    os = 'Linux'
   }
   
-  // 解析浏览器
-  if (/Edg\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `Edge ${RegExp.$1}`
-  } else if (/OPR\/(\d+(\.\d+)*)/.test(ua) || /Opera\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `Opera ${RegExp.$1}`
-  } else if (/Firefox\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `Firefox ${RegExp.$1}`
-  } else if (/Chrome\/(\d+(\.\d+)*)/.test(ua) && !/Edg|OPR/.test(ua)) {
-    browser = `Chrome ${RegExp.$1}`
-  } else if (/Safari\/(\d+(\.\d+)*)/.test(ua) && /Version\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `Safari ${RegExp.$1}`
-  } else if (/MSIE (\d+)/.test(ua) || /Trident.*rv:(\d+)/.test(ua)) {
-    browser = `IE ${RegExp.$1}`
-  } else if (/MicroMessenger\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `WeChat ${RegExp.$1}`
-  } else if (/QQBrowser\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `QQ Browser ${RegExp.$1}`
-  } else if (/UCBrowser\/(\d+(\.\d+)*)/.test(ua)) {
-    browser = `UC Browser ${RegExp.$1}`
+  // 解析浏览器（顺序很重要，先检测特殊浏览器）
+  let match
+  if ((match = ua.match(/Edg\/(\d+(\.\d+)*)/))) {
+    browser = `Edge ${match[1]}`
+  } else if ((match = ua.match(/OPR\/(\d+(\.\d+)*)/))) {
+    browser = `Opera ${match[1]}`
+  } else if ((match = ua.match(/Firefox\/(\d+(\.\d+)*)/))) {
+    browser = `Firefox ${match[1]}`
+  } else if ((match = ua.match(/MicroMessenger\/(\d+(\.\d+)*)/))) {
+    browser = `WeChat ${match[1]}`
+  } else if ((match = ua.match(/QQBrowser\/(\d+(\.\d+)*)/))) {
+    browser = `QQ Browser ${match[1]}`
+  } else if ((match = ua.match(/UCBrowser\/(\d+(\.\d+)*)/))) {
+    browser = `UC Browser ${match[1]}`
+  } else if ((match = ua.match(/Chrome\/(\d+(\.\d+)*)/)) && !/Edg|OPR/.test(ua)) {
+    browser = `Chrome ${match[1]}`
+  } else if ((match = ua.match(/Version\/(\d+(\.\d+)*).*Safari/))) {
+    browser = `Safari ${match[1]}`
+  } else if (/Safari\/(\d+)/.test(ua) && !/Chrome/.test(ua)) {
+    browser = 'Safari'
+  } else if ((match = ua.match(/MSIE (\d+)/))) {
+    browser = `IE ${match[1]}`
+  } else if ((match = ua.match(/Trident.*rv:(\d+)/))) {
+    browser = `IE ${match[1]}`
   }
   
   return { os, browser }
@@ -929,6 +955,22 @@ function parseComment(comments, uid) {
 }
 
 function toCommentDto(comment, uid, replies = [], comments = []) {
+  // 动态解析 UA（根据配置决定是否显示）
+  let displayOs = ''
+  let displayBrowser = ''
+  if (config.SHOW_UA !== 'false') {
+    const parsed = parseUA(comment.ua)
+    displayOs = parsed.os
+    displayBrowser = parsed.browser
+  }
+  
+  // 动态获取 IP 归属地（根据配置决定是否显示）
+  let displayIpRegion = ''
+  if (config.SHOW_REGION && config.SHOW_REGION !== 'false') {
+    // 优先使用存储的 ipRegion（EdgeOne 在提交时已获取）
+    displayIpRegion = comment.ipRegion || ''
+  }
+  
   return {
     id: comment._id,
     nick: comment.nick,
@@ -936,9 +978,9 @@ function toCommentDto(comment, uid, replies = [], comments = []) {
     mailMd5: getMailMd5(comment),
     link: comment.link,
     comment: comment.comment,
-    os: comment.os || '',
-    browser: comment.browser || '',
-    ipRegion: comment.ipRegion || '',
+    os: displayOs,
+    browser: displayBrowser,
+    ipRegion: displayIpRegion,
     master: comment.master,
     like: comment.like ? comment.like.length : 0,
     liked: comment.like ? comment.like.includes(uid) : false,
@@ -1263,13 +1305,9 @@ async function parseCommentData(event, request, accessToken, ip) {
   // 预检测垃圾评论
   const isSpam = isAdminUser ? false : preCheckSpam(event, config)
   
-  // 获取 IP 属地（仅当配置开启时）
-  const showRegion = config.SHOW_REGION && config.SHOW_REGION !== 'false'
-  const ipRegion = showRegion ? getIpRegion(request) : ''
-  
-  // 解析 UA（仅当配置开启时）
-  const showUA = config.SHOW_UA !== 'false'
-  const { os, browser } = showUA ? parseUA(event.ua) : { os: '', browser: '' }
+  // 获取 IP 属地（始终获取并存储，因为 EdgeOne 的 geo 信息只在请求时可用）
+  // 显示与否由 toCommentDto 根据配置决定
+  const ipRegion = getIpRegion(request)
   
   const commentDo = {
     _id: generateUUID(),
@@ -1281,8 +1319,6 @@ async function parseCommentData(event, request, accessToken, ip) {
     ua: event.ua,
     ip: ip,
     ipRegion: ipRegion,
-    os: os,
-    browser: browser,
     master: isBloggerMail,
     url: event.url,
     href: event.href,
